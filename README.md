@@ -82,13 +82,13 @@ flowchart TD
 | 輸入尺寸 | 224 x 224（resize method: contain） |
 | 資料增強 | Mirror、Rotation、Blur |
 | Epochs / Batch size / LR | 100 / 8 / 0.001 |
-| 驗證準確率 | 1.00（混淆矩陣 4 類各 5 張全部正確） |
+| 驗證準確率 | val_acc 1.00（驗證集 15 張，由 MaixHub 自動切分）；MaixHub 另以每類 5 張、共 20 張評估混淆矩陣，全部分類正確 |
 
 資料集照片全部由開發板鏡頭直接拍攝（`bottle.py`、`paper.py`、`tissue.py`、`camera.py`），每批 15 張存到板載 Flash 後再下載到電腦，確保訓練資料與實際部署環境的視角、光線、鏡頭特性一致。repo 內 `trashdataset/` 為其中 95 張範例，完整資料集在 MaixHub 專案內。
 
 ## 模型部署
 
-Maix Bit 的 MicroSD 卡槽故障，且 IDE 傳輸大檔時經常逾時或溢位，因此自行撰寫 `tools/flash_model.py`：透過序列埠與 MicroPython REPL 交談，把 `.kmodel` 切成 120 bytes 區塊以 Base64 編碼傳送，板端即時解碼並以 append 模式寫入 `/flash/model-320331.kmodel`，每 30 個區塊主動 `gc.collect()` 一次。完整技術細節見 [docs/AI_MODEL_DEPLOYMENT_GUIDE.md](docs/AI_MODEL_DEPLOYMENT_GUIDE.md)。
+Maix Bit 的 MicroSD 卡槽故障，且 IDE 傳輸大檔時經常逾時或溢位，因此自行撰寫 `tools/flash_model.py`：透過序列埠與 MicroPython REPL 交談，把 `.kmodel` 切成 120 bytes 區塊以 Base64 編碼傳送，板端即時解碼並以 append 模式寫入 `/flash/model-320331.kmodel`，每 30 個區塊主動 `gc.collect()` 一次。
 
 ```bash
 pip install pyserial
