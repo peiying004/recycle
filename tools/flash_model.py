@@ -5,20 +5,70 @@ flash_model.py
 """
 
 import serial
+import serial.tools.list_ports
 import time
 import base64
 import sys
 import hashlib
 import os
+import argparse
 
-# 1. 設定模型路徑與串口參數
-KMODEL_PATH = "model-320331.kmodel"  # 或放置在同目錄下的 kmodel 檔名
-COM_PORT = "COM7"                    # 依照裝置管理員中的 COM 埠號修改
-BAUD_RATE = 115200
+def parse_arguments():
+    parser = argparse.ArgumentParser(
+        description="K210 模型板載 Flash 燒錄工具 (Base64 Chunked Flash Streaming)"
+    )
+    parser.add_argument("--port", type=str, default=None, help="序列埠號 (例如: COM7 或 /dev/ttyUSB0，未指定時將自動偵測)")
+    parser.add_argument("--baud", type=int, default=115200, help="序列埠傳輸鮑率 (預設: 115200)")
+    parser.add_argument("--model", type=str, default="model-320331.kmodel", help="目標 .kmodel 檔案路徑 (預設: model-320331.kmodel)")
+    parser.add_argument("--dest", type=str, default=None, help="晶片端目標檔案路徑 (預設: /flash/<model_name>)")
+    return parser.parse_args()
 
-if not os.path.exists(KMODEL_PATH):
-    print(f"錯誤：找不到模型檔案 {KMODEL_PATH}")
+def resolve_serial_port(requested_port):
+    if requested_port:
+        return requested_port
+
+    ports = list(serial.tools.list_ports.comports())
+    if not ports:
+        print("[!] 錯誤：未偵測到任何連接的序列埠，請確認 Maix Bit 開發板已連接至電腦！")
+        sys.exit(1)
+
+    if len(ports) == 1:
+        selected = ports[0].device
+        print(f"[*] 自動偵測並選用序列埠: {selected} ({ports[0].description})")
+        return selected
+
+    print("[*] 偵測到多個可用序列埠，請選擇：")
+    for idx, p in enumerate(ports):
+        print(f"  [{idx}] {p.device} - {p.description}")
+    try:
+        choice = int(input("請輸入序列埠編號: ").strip())
+        return ports[choice].device
+    except (ValueError, IndexError):
+        print("[!] 輸入無效，操作已取消。")
+        sys.exit(1)
+
+def resolve_model_file(model_path):
+    if os.path.exists(model_path):
+        return os.path.abspath(model_path)
+
+    parent_check = os.path.join("..", model_path)
+    if os.path.exists(parent_check):
+        return os.path.abspath(parent_check)
+
+    fallback_dl = os.path.expanduser(os.path.join("~", "Downloads", "model-320331", "model-320331.kmodel"))
+    if os.path.exists(fallback_dl):
+        print(f"[*] 自動於下載目錄找到模型: {fallback_dl}")
+        return fallback_dl
+
+    print(f"[!] 錯誤：找不到模型檔案 {model_path}")
     sys.exit(1)
+
+# 1. 解析命令列參數與自動解析路徑/埠號
+args = parse_arguments()
+COM_PORT = resolve_serial_port(args.port)
+BAUD_RATE = args.baud
+KMODEL_PATH = resolve_model_file(args.model)
+dest_filename = args.dest if args.dest else f"/flash/{os.path.basename(KMODEL_PATH)}"
 
 with open(KMODEL_PATH, "rb") as f:
     kmodel_data = f.read()
@@ -50,11 +100,10 @@ def execute(cmd, wait_time=0.2):
     return res.decode('utf-8', errors='ignore')
 
 # 3. 準備板端寫入環境
-print("[*] 正在初始化晶片 Flash 寫入環境...")
+print(f"[*] 正在初始化晶片 Flash 寫入環境：{dest_filename} ...")
 execute("import ubinascii, os, gc")
 execute("gc.collect()")
 
-dest_filename = "/flash/model-320331.kmodel"
 execute(f"f = open('{dest_filename}', 'wb')")
 execute("w = f.write")
 execute("b = ubinascii.a2b_base64")
