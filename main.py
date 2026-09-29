@@ -10,7 +10,6 @@ tim = Timer(Timer.TIMER0, Timer.CHANNEL0, mode=Timer.MODE_PWM)
 servo = PWM(tim, freq=50, duty=7.5, pin=SERVO_PIN)
 
 current_angle = 90
-pause_motor_until = 0  # 新增：馬達罷工計時器
 
 def set_servo_angle(angle):
     global current_angle
@@ -73,35 +72,28 @@ try:
         label_text = "Label: %s (%.2f)" % (raw_label, pmax)
         cat_text = "Type: %s" % category_text
 
-        # 畫上文字 (這次相機保持運作，絕對看得見)
+        # 在 LCD 即時顯示標籤、信心值與分類結果
         img.draw_string(10, 10, label_text, scale=2, color=(0, 255, 0))
         img.draw_string(10, 35, cat_text, scale=2, color=(255, 0, 0))
         lcd.display(img)
 
         # ================= 4. 馬達平滑分流與防重複觸發邏輯 =================
         if category_text in ["Recycle (回收)", "General (一般垃圾)"]:
+            print("=> 偵測到 %s，分流至 %s" % (raw_label, category_text))
 
-            # 如果是 bottle，設定馬達未來 20 秒內不准動
-            if raw_label == 'bottle' and time.time() > pause_motor_until:
-                print("=> 偵測到 bottle！相機保持運作，馬達暫停 20 秒讓你截圖！")
-                pause_motor_until = time.time() + 20
-
-            # 檢查是否超過了暫停時間
-            if time.time() >= pause_motor_until:
-                if category_text == "Recycle (回收)":
-                    move_servo_slowly(150, delay_ms=30)
-                else:
-                    move_servo_slowly(30, delay_ms=30)
-
-                time.sleep(1.0)
-                move_servo_slowly(90, delay_ms=10)
-                time.sleep(0.5)
-
-                for _ in range(15):
-                    sensor.snapshot()
+            # 緩步轉動可降低伺服馬達瞬間抽載，避免供電不穩
+            if category_text == "Recycle (回收)":
+                move_servo_slowly(150, delay_ms=30)   # 寶特瓶 / 紙類 -> 回收槽
             else:
-                # 在這 20 秒內，馬達什麼都不做，直接跳過 (讓畫面保持高 FPS 更新)
-                pass
+                move_servo_slowly(30, delay_ms=30)    # 衛生紙 -> 一般垃圾槽
+
+            time.sleep(1.0)
+            move_servo_slowly(90, delay_ms=10)        # 回到中立位置
+            time.sleep(0.5)
+
+            # 丟棄殘留畫面，避免同一物體被重複觸發
+            for _ in range(15):
+                sensor.snapshot()
 
         del img_kpu
         gc.collect()
