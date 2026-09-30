@@ -94,11 +94,11 @@ flowchart TD
 
 ## 模型部署
 
-Maix Bit 的 MicroSD 卡槽故障，且 IDE 傳輸大檔時經常逾時或溢位，因此自行撰寫 `tools/flash_model.py`：透過序列埠與 MicroPython REPL 交談，把 `.kmodel` 切成 120 bytes 區塊以 Base64 編碼傳送，板端即時解碼並以 append 模式寫入 `/flash/model-320331.kmodel`，每 30 個區塊主動 `gc.collect()` 一次。
+Maix Bit 的 MicroSD 卡槽故障，且 IDE 傳輸大檔時經常逾時或溢位，因此自行撰寫 `tools/flash_model.py`：透過序列埠與 MicroPython REPL 交談，把 `.kmodel` 切成 120 bytes 區塊以 Base64 編碼傳送，板端即時解碼並分塊寫入 `/flash/model-320331.kmodel`，每 30 個區塊主動 `gc.collect()` 一次。
 
 ```bash
 pip install pyserial
-# 修改 tools/flash_model.py 內的 COM_PORT 與 KMODEL_PATH 後執行
+# 可自動偵測序列埠；也可用 --port、--model 等參數指定
 python tools/flash_model.py
 ```
 

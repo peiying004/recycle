@@ -42,6 +42,8 @@ def resolve_serial_port(requested_port):
         print(f"  [{idx}] {p.device} - {p.description}")
     try:
         choice = int(input("請輸入序列埠編號: ").strip())
+        if not 0 <= choice < len(ports):
+            raise IndexError
         return ports[choice].device
     except (ValueError, IndexError):
         print("[!] 輸入無效，操作已取消。")
@@ -55,10 +57,16 @@ def resolve_model_file(model_path):
     if os.path.exists(parent_check):
         return os.path.abspath(parent_check)
 
-    fallback_dl = os.path.expanduser(os.path.join("~", "Downloads", "model-320331", "model-320331.kmodel"))
-    if os.path.exists(fallback_dl):
-        print(f"[*] 自動於下載目錄找到模型: {fallback_dl}")
-        return fallback_dl
+    model_name = os.path.basename(model_path)
+    model_stem = os.path.splitext(model_name)[0]
+    download_candidates = (
+        os.path.expanduser(os.path.join("~", "Downloads", model_name)),
+        os.path.expanduser(os.path.join("~", "Downloads", model_stem, model_name)),
+    )
+    for candidate in download_candidates:
+        if os.path.exists(candidate):
+            print(f"[*] 自動於下載目錄找到模型: {candidate}")
+            return candidate
 
     print(f"[!] 錯誤：找不到模型檔案 {model_path}")
     sys.exit(1)
@@ -74,6 +82,10 @@ with open(KMODEL_PATH, "rb") as f:
     kmodel_data = f.read()
 
 total_bytes = len(kmodel_data)
+if total_bytes == 0:
+    print(f"[!] 錯誤：模型檔案是空的：{KMODEL_PATH}")
+    sys.exit(1)
+
 local_sha = hashlib.sha256(kmodel_data).hexdigest()
 print(f"[*] 目標模型：{KMODEL_PATH}")
 print(f"[*] 檔案大小：{total_bytes} bytes")
@@ -104,7 +116,7 @@ print(f"[*] 正在初始化晶片 Flash 寫入環境：{dest_filename} ...")
 execute("import ubinascii, os, gc")
 execute("gc.collect()")
 
-execute(f"f = open('{dest_filename}', 'wb')")
+execute(f"f = open({dest_filename!r}, 'wb')")
 execute("w = f.write")
 execute("b = ubinascii.a2b_base64")
 
@@ -164,13 +176,23 @@ execute("f.close()")
 time.sleep(0.5)
 
 print("[*] 驗證板端檔案大小：")
-stat_res = execute(f"print('FLASH_SIZE:', os.stat('{dest_filename}')[6])")
+stat_res = execute(f"print('FLASH_SIZE:', os.stat({dest_filename!r})[6])")
 print(stat_res)
+
+if f"FLASH_SIZE: {total_bytes}" not in stat_res:
+    print(f"[!] 板端檔案大小校驗失敗，預期為 {total_bytes} bytes。")
+    s.close()
+    sys.exit(1)
 
 print("[*] 呼叫 K210 硬體 KPU 加載測試：")
 execute("import KPU as kpu")
-load_res = execute(f"task = kpu.load('{dest_filename}'); print('KPU_LOAD_RESULT:', task); kpu.deinit(task)")
+load_res = execute(f"task = kpu.load({dest_filename!r}); print('KPU_LOAD_RESULT:', task); kpu.deinit(task)")
 print(load_res)
+
+if "Traceback" in load_res or "Error" in load_res:
+    print("[!] KPU 加載測試失敗，請依照上方訊息檢查模型與韌體版本。")
+    s.close()
+    sys.exit(1)
 
 print("\n=== 模型已成功常駐於晶片內部 Flash，可直接供 main.py 調用 ===")
 s.close()
